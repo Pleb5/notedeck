@@ -8,14 +8,14 @@ use std::{borrow::Cow, fmt::Display};
 use tokenator::{ParseError, TokenParser, TokenSerializable, TokenWriter};
 use tracing::{error, warn};
 
-#[derive(Clone, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PubkeySource {
     Explicit(Pubkey),
     #[default]
     DeckAuthor,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ListKind {
     Contact(PubkeySource),
 }
@@ -130,7 +130,7 @@ impl TokenSerializable for ListKind {
 ///   - filter
 ///   - ... etc
 ///
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TimelineKind {
     List(ListKind),
 
@@ -234,7 +234,7 @@ impl TokenSerializable for TimelineKind {
 }
 
 /// Hardcoded algo timelines
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AlgoTimeline {
     /// LastPerPubkey: a special nostr query that fetches the last N
     /// notes for each pubkey on the list

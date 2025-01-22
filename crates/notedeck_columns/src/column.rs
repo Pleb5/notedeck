@@ -1,8 +1,6 @@
 use crate::route::{Route, Router};
-use crate::timeline::{Timeline, TimelineId};
-use indexmap::IndexMap;
+use crate::timeline::{Timeline, TimelineCache, TimelineId};
 use std::iter::Iterator;
-use std::sync::atomic::{AtomicU32, Ordering};
 use tracing::warn;
 
 #[derive(Clone)]
@@ -28,36 +26,37 @@ impl Column {
 #[derive(Default)]
 pub struct Columns {
     /// Columns are simply routers into settings, timelines, etc
-    columns: IndexMap<u32, Column>,
-
-    /// Timeline state is not tied to routing logic separately, so that
-    /// different columns can navigate to and from settings to timelines,
-    /// etc.
-    pub timelines: IndexMap<u32, Timeline>,
+    columns: Vec<Column>,
 
     /// The selected column for key navigation
     selected: i32,
 }
-static UIDS: AtomicU32 = AtomicU32::new(0);
 
 impl Columns {
     pub fn new() -> Self {
         Columns::default()
     }
 
-    pub fn add_new_timeline_column(&mut self, timeline: Timeline) {
-        let id = Self::get_new_id();
-        let routes = vec![Route::timeline(timeline.id)];
-        self.timelines.insert(id, timeline);
-        self.columns.insert(id, Column::new(routes));
+    pub fn add_new_timeline_column(&mut self, timelines: &mut TimelineCache, timeline: Timeline) {
+        let routes = vec![Route::timeline(timeline.kind.clone())];
+        timelines
+            .timelines
+            .insert(TimelineId::new(timeline.kind.clone()), timeline);
+        self.columns.push(Column::new(routes));
     }
 
-    pub fn add_timeline_to_column(&mut self, col: usize, timeline: Timeline) {
-        let col_id = self.get_column_id_at_index(col);
+    pub fn add_timeline_to_column(
+        &mut self,
+        col: usize,
+        timeline_cache: &mut TimelineCache,
+        timeline: Timeline,
+    ) {
         self.column_mut(col)
             .router_mut()
-            .route_to_replaced(Route::timeline(timeline.id));
-        self.timelines.insert(col_id, timeline);
+            .route_to_replaced(Route::timeline(timeline.kind.clone()));
+        timeline_cache
+            .timelines
+            .insert(TimelineId::new(timeline.kind.clone()), timeline);
     }
 
     pub fn new_column_picker(&mut self) {
@@ -66,38 +65,38 @@ impl Columns {
         )]));
     }
 
-    pub fn insert_intermediary_routes(&mut self, intermediary_routes: Vec<IntermediaryRoute>) {
-        let id = Self::get_new_id();
-
+    pub fn insert_intermediary_routes(
+        &mut self,
+        timeline_cache: &mut TimelineCache,
+        intermediary_routes: Vec<IntermediaryRoute>,
+    ) {
         let routes = intermediary_routes
             .into_iter()
             .map(|r| match r {
                 IntermediaryRoute::Timeline(timeline) => {
-                    let route = Route::timeline(timeline.id);
-                    self.timelines.insert(id, timeline);
+                    let route = Route::timeline(timeline.kind.clone());
+                    timeline_cache
+                        .timelines
+                        .insert(TimelineId::new(timeline.kind), timeline);
                     route
                 }
                 IntermediaryRoute::Route(route) => route,
             })
             .collect();
 
-        self.columns.insert(id, Column::new(routes));
-    }
-
-    fn get_new_id() -> u32 {
-        UIDS.fetch_add(1, Ordering::Relaxed)
+        self.columns.push(Column::new(routes));
     }
 
     pub fn add_column_at(&mut self, column: Column, index: u32) {
-        self.columns.insert(index, column);
+        self.columns.insert(index as usize, column);
     }
 
     pub fn add_column(&mut self, column: Column) {
-        self.columns.insert(Self::get_new_id(), column);
+        self.columns.push(column);
     }
 
-    pub fn columns_mut(&mut self) -> Vec<&mut Column> {
-        self.columns.values_mut().collect()
+    pub fn columns_mut(&mut self) -> &mut Vec<Column> {
+        &mut self.columns
     }
 
     pub fn num_columns(&self) -> usize {
@@ -110,72 +109,23 @@ impl Columns {
         if self.columns.is_empty() {
             self.new_column_picker();
         }
-        self.columns
-            .get_index_mut(0)
-            .expect("There should be at least one column")
-            .1
-            .router_mut()
-    }
-
-    pub fn timeline_mut(&mut self, timeline_ind: usize) -> &mut Timeline {
-        self.timelines
-            .get_index_mut(timeline_ind)
-            .expect("expected index to be in bounds")
-            .1
+        self.columns[0].router_mut()
     }
 
     pub fn column(&self, ind: usize) -> &Column {
-        self.columns
-            .get_index(ind)
-            .expect("Expected index to be in bounds")
-            .1
+        &self.columns[ind]
     }
 
-    pub fn columns(&self) -> Vec<&Column> {
-        self.columns.values().collect()
-    }
-
-    pub fn get_column_id_at_index(&self, ind: usize) -> u32 {
-        *self
-            .columns
-            .get_index(ind)
-            .expect("expected index to be within bounds")
-            .0
+    pub fn columns(&self) -> &Vec<Column> {
+        &self.columns
     }
 
     pub fn selected(&mut self) -> &mut Column {
-        self.columns
-            .get_index_mut(self.selected as usize)
-            .expect("Expected selected index to be in bounds")
-            .1
-    }
-
-    pub fn timelines_mut(&mut self) -> Vec<&mut Timeline> {
-        self.timelines.values_mut().collect()
-    }
-
-    pub fn timelines(&self) -> Vec<&Timeline> {
-        self.timelines.values().collect()
-    }
-
-    pub fn find_timeline_mut(&mut self, id: TimelineId) -> Option<&mut Timeline> {
-        self.timelines_mut().into_iter().find(|tl| tl.id == id)
-    }
-
-    pub fn find_timeline(&self, id: TimelineId) -> Option<&Timeline> {
-        self.timelines().into_iter().find(|tl| tl.id == id)
+        &mut self.columns[self.selected as usize]
     }
 
     pub fn column_mut(&mut self, ind: usize) -> &mut Column {
-        self.columns
-            .get_index_mut(ind)
-            .expect("Expected index to be in bounds")
-            .1
-    }
-
-    pub fn find_timeline_for_column_index(&self, ind: usize) -> Option<&Timeline> {
-        let col_id = self.get_column_id_at_index(ind);
-        self.timelines.get(&col_id)
+        &mut self.columns[ind]
     }
 
     pub fn select_down(&mut self) {
@@ -200,12 +150,12 @@ impl Columns {
         self.selected += 1;
     }
 
-    pub fn delete_column(&mut self, index: usize) {
-        if let Some((key, _)) = self.columns.get_index_mut(index) {
+    pub fn delete_column(&mut self, timeline_cache: &mut TimelineCache, index: usize) {
+        if let Some((key, _)) = self.columns.get(index) {
             self.timelines.shift_remove(key);
         }
 
-        self.columns.shift_remove_index(index);
+        self.columns.remove(index);
 
         if self.columns.is_empty() {
             self.new_column_picker();

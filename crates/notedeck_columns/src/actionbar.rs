@@ -1,7 +1,7 @@
 use crate::{
     column::Columns,
     route::{Route, Router},
-    timeline::{TimelineCache, TimelineCacheKey},
+    timeline::{TimelineCache, TimelineCacheKey, TimelineId},
 };
 
 use enostr::{NoteId, Pubkey, RelayPool};
@@ -18,7 +18,7 @@ pub enum NoteAction {
 }
 
 pub struct NewNotes<'a> {
-    pub id: TimelineCacheKey<'a>,
+    pub id: &'a TimelineId,
     pub notes: Vec<NoteKey>,
 }
 
@@ -139,7 +139,7 @@ impl NoteAction {
 }
 
 impl<'a> TimelineOpenResult<'a> {
-    pub fn new_notes(notes: Vec<NoteKey>, id: TimelineCacheKey<'a>) -> Self {
+    pub fn new_notes(notes: Vec<NoteKey>, id: &'a TimelineId) -> Self {
         Self::NewNotes(NewNotes::new(notes, id))
     }
 
@@ -161,7 +161,7 @@ impl<'a> TimelineOpenResult<'a> {
 }
 
 impl<'a> NewNotes<'a> {
-    pub fn new(notes: Vec<NoteKey>, id: TimelineCacheKey<'a>) -> Self {
+    pub fn new(notes: Vec<NoteKey>, id: &'a TimelineId) -> Self {
         NewNotes { notes, id }
     }
 
@@ -175,46 +175,22 @@ impl<'a> NewNotes<'a> {
         unknown_ids: &mut UnknownIds,
         note_cache: &mut NoteCache,
     ) {
-        match self.id {
-            TimelineCacheKey::Profile(pubkey) => {
-                let profile = if let Some(profile) = timeline_cache.profiles.get_mut(pubkey.bytes())
-                {
-                    profile
-                } else {
-                    return;
-                };
+        let reversed = if let TimelindKind::Thread(_) = self.id.kind() {
+            true
+        } else {
+            false
+        };
 
-                let reversed = false;
+        let timeline = if let Some(profile) = timeline_cache.timelines.get_mut(self.id) {
+            profile
+        } else {
+            error!("NewNotes: could not get timeline for key {}", self.id);
+            return;
+        };
 
-                if let Err(err) = profile.timeline.insert(
-                    &self.notes,
-                    ndb,
-                    txn,
-                    unknown_ids,
-                    note_cache,
-                    reversed,
-                ) {
-                    error!("error inserting notes into profile timeline: {err}")
-                }
-            }
-
-            TimelineCacheKey::Thread(root_id) => {
-                // threads are chronological, ie reversed from reverse-chronological, the default.
-                let reversed = true;
-                let thread = if let Some(thread) = timeline_cache.threads.get_mut(root_id.bytes()) {
-                    thread
-                } else {
-                    return;
-                };
-
-                if let Err(err) =
-                    thread
-                        .timeline
-                        .insert(&self.notes, ndb, txn, unknown_ids, note_cache, reversed)
-                {
-                    error!("error inserting notes into thread timeline: {err}")
-                }
-            }
+        if let Err(err) = timeline.insert(&self.notes, ndb, txn, unknown_ids, note_cache, reversed)
+        {
+            error!("error inserting notes into profile timeline: {err}")
         }
     }
 }

@@ -33,12 +33,22 @@ pub use cache::{TimelineCache, TimelineCacheKey};
 pub use kind::{ColumnTitle, PubkeySource, TimelineKind};
 pub use route::TimelineRoute;
 
-#[derive(Debug, Hash, Copy, Clone, Eq, PartialEq)]
-pub struct TimelineId(u32);
+#[derive(Debug, Hash, Clone, Eq, PartialEq)]
+pub struct TimelineId {
+    kind: TimelineKind,
+}
 
 impl TimelineId {
-    pub fn new(id: u32) -> Self {
+    pub fn kind(&self) -> &TimelineKind {
+        &self.kind
+    }
+
+    pub fn new(id: TimelineKind) -> Self {
         TimelineId(id)
+    }
+
+    pub fn profile(pubkey: Pubkey) -> Self {
+        TimelineId::new(TimelineKind::Profile(PubkeySource::pubkey(pubkey)))
     }
 }
 
@@ -186,7 +196,6 @@ impl TimelineTab {
 /// A column in a deck. Holds navigation state, loaded notes, column kind, etc.
 #[derive(Debug)]
 pub struct Timeline {
-    pub id: TimelineId,
     pub kind: TimelineKind,
     // We may not have the filter loaded yet, so let's make it an option so
     // that codepaths have to explicitly handle it

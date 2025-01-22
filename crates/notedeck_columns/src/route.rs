@@ -4,17 +4,19 @@ use std::fmt::{self};
 use crate::{
     accounts::AccountsRoute,
     column::Columns,
-    timeline::{kind::ColumnTitle, TimelineId, TimelineRoute},
+    timeline::{kind::ColumnTitle, TimelineKind, TimelineRoute},
     ui::add_column::{AddAlgoRoute, AddColumnRoute},
 };
 
 use tokenator::{ParseError, TokenParser, TokenSerializable, TokenWriter};
 
 /// App routing. These describe different places you can go inside Notedeck.
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub enum Route {
-    Timeline(TimelineRoute),
+    Timeline(TimelineKind),
     Accounts(AccountsRoute),
+    Reply(NoteId),
+    Quote(NoteId),
     Relays,
     ComposeNote,
     AddColumn(AddColumnRoute),
@@ -27,7 +29,7 @@ pub enum Route {
 impl TokenSerializable for Route {
     fn serialize_tokens(&self, writer: &mut TokenWriter) {
         match self {
-            Route::Timeline(routes) => routes.serialize_tokens(writer),
+            Route::Timeline(timeline_kind) => timeline_kind.serialize_tokens(writer),
             Route::Accounts(routes) => routes.serialize_tokens(writer),
             Route::AddColumn(routes) => routes.serialize_tokens(writer),
             Route::EditDeck(ind) => {
@@ -60,7 +62,7 @@ impl TokenSerializable for Route {
         TokenParser::alt(
             parser,
             &[
-                |p| Ok(Route::Timeline(TimelineRoute::parse_from_tokens(p)?)),
+                |p| Ok(Route::Timeline(TimelineRoute::parse(p)?)),
                 |p| Ok(Route::Accounts(AccountsRoute::parse_from_tokens(p)?)),
                 |p| Ok(Route::AddColumn(AddColumnRoute::parse_from_tokens(p)?)),
                 |p| {
@@ -114,11 +116,11 @@ impl TokenSerializable for Route {
 }
 
 impl Route {
-    pub fn timeline(timeline_id: TimelineId) -> Self {
-        Route::Timeline(TimelineRoute::Timeline(timeline_id))
+    pub fn timeline(timeline_kind: TimelineKind) -> Self {
+        Route::Timeline(TimelineRoute::Timeline(timeline_kind))
     }
 
-    pub fn timeline_id(&self) -> Option<&TimelineId> {
+    pub fn timeline_id(&self) -> Option<&TimelineKind> {
         if let Route::Timeline(TimelineRoute::Timeline(tid)) = self {
             Some(tid)
         } else {

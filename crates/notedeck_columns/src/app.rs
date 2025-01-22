@@ -127,30 +127,25 @@ fn try_process_event(
         }
     }
 
-    let current_columns = get_active_columns_mut(app_ctx.accounts, &mut damus.decks_cache);
-    let n_timelines = current_columns.timelines().len();
-    for timeline_ind in 0..n_timelines {
-        let is_ready = {
-            let timeline = &mut current_columns.timelines[timeline_ind];
-            timeline::is_timeline_ready(
-                app_ctx.ndb,
-                app_ctx.pool,
-                app_ctx.note_cache,
-                timeline,
-                app_ctx
-                    .accounts
-                    .get_selected_account()
-                    .as_ref()
-                    .map(|sa| &sa.pubkey),
-            )
-        };
+    for (_kind, timeline) in damus.timeline_cache.timelines.iter_mut() {
+        let is_ready = timeline::is_timeline_ready(
+            app_ctx.ndb,
+            app_ctx.pool,
+            app_ctx.note_cache,
+            timeline,
+            app_ctx
+                .accounts
+                .get_selected_account()
+                .as_ref()
+                .map(|sa| &sa.pubkey),
+        );
 
         if is_ready {
             let txn = Transaction::new(app_ctx.ndb).expect("txn");
             // only thread timelines are reversed
             let reversed = false;
 
-            if let Err(err) = current_columns.timelines_mut()[timeline_ind].poll_notes_into_view(
+            if let Err(err) = timeline.poll_notes_into_view(
                 app_ctx.ndb,
                 &txn,
                 app_ctx.unknown_ids,
@@ -224,7 +219,7 @@ fn handle_eose(
         return Ok(());
     };
 
-    match *sub_kind {
+    match sub_kind {
         SubKind::Timeline(_) => {
             // eose on timeline? whatevs
         }
@@ -250,10 +245,7 @@ fn handle_eose(
         }
 
         SubKind::FetchingContactList(timeline_uid) => {
-            let timeline = if let Some(tl) =
-                get_active_columns_mut(ctx.accounts, &mut damus.decks_cache)
-                    .find_timeline_mut(timeline_uid)
-            {
+            let timeline = if let Some(tl) = damus.timeline_cache.timelines.get(timeline_uid) {
                 tl
             } else {
                 error!(
@@ -374,13 +366,14 @@ impl Damus {
             .as_ref()
             .map(|a| a.pubkey.bytes());
 
+        let timeline_cache = TimelineCache::default();
         let tmp_columns = !parsed_args.columns.is_empty();
         let decks_cache = if tmp_columns {
             info!("DecksCache: loading from command line arguments");
             let mut columns: Columns = Columns::new();
             for col in parsed_args.columns {
                 if let Some(timeline) = col.into_timeline(ctx.ndb, account) {
-                    columns.add_new_timeline_column(timeline);
+                    columns.add_new_timeline_column(&mut timeline_cache, timeline);
                 }
             }
 
@@ -414,7 +407,7 @@ impl Damus {
         Self {
             subscriptions: Subscriptions::default(),
             since_optimize: parsed_args.since_optimize,
-            timeline_cache: TimelineCache::default(),
+            timeline_cache,
             drafts: Drafts::default(),
             state: DamusState::Initializing,
             textmode: parsed_args.textmode,

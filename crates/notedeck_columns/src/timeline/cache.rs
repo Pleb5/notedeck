@@ -4,20 +4,19 @@ use crate::{
     profile::Profile,
     thread::Thread,
     //subscriptions::SubRefs,
-    timeline::{PubkeySource, Timeline},
+    timeline::{PubkeySource, Timeline, TimelineId},
 };
 
-use notedeck::{NoteCache, NoteRef, RootNoteId, RootNoteIdBuf};
+use notedeck::{NoteCache, NoteRef, RootNoteId};
 
-use enostr::{Pubkey, PubkeyRef, RelayPool};
+use enostr::{PubkeyRef, RelayPool};
 use nostrdb::{Filter, FilterBuilder, Ndb, Transaction};
 use std::collections::HashMap;
 use tracing::{debug, info, warn};
 
 #[derive(Default)]
 pub struct TimelineCache {
-    pub threads: HashMap<RootNoteIdBuf, Thread>,
-    pub profiles: HashMap<Pubkey, Profile>,
+    pub timelines: HashMap<TimelineId, Timeline>,
 }
 
 pub enum Vitality<'a, M> {
@@ -45,6 +44,7 @@ impl<'a, M> Vitality<'a, M> {
 pub enum TimelineCacheKey<'a> {
     Profile(PubkeyRef<'a>),
     Thread(RootNoteId<'a>),
+    Hashtag(&'a str),
 }
 
 impl<'a> TimelineCacheKey<'a> {

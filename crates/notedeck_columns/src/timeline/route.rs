@@ -3,7 +3,7 @@ use crate::{
     draft::Drafts,
     nav::RenderNavAction,
     profile::ProfileAction,
-    timeline::{TimelineCache, TimelineId, TimelineKind},
+    timeline::{TimelineCache, TimelineKind},
     ui::{
         self,
         note::{NoteOptions, QuoteRepostView},
@@ -11,57 +11,18 @@ use crate::{
     },
 };
 
-use tokenator::{ParseError, TokenParser, TokenSerializable, TokenWriter};
-
 use enostr::{NoteId, Pubkey};
 use nostrdb::{Ndb, Transaction};
 use notedeck::{Accounts, ImageCache, MuteFun, NoteCache, UnknownIds};
+use tokenator::{ParseError, TokenParser, TokenSerializable, TokenWriter};
 
-#[derive(Debug, Eq, PartialEq, Clone, Copy)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub enum TimelineRoute {
-    Timeline(TimelineId),
-    Thread(NoteId),
-    Profile(Pubkey),
-    Reply(NoteId),
-    Quote(NoteId),
+    Timeline(TimelineKind),
 }
 
-fn parse_pubkey<'a>(parser: &mut TokenParser<'a>) -> Result<Pubkey, ParseError<'a>> {
-    let hex = parser.pull_token()?;
-    Pubkey::from_hex(hex).map_err(|_| ParseError::HexDecodeFailed)
-}
-
-fn parse_note_id<'a>(parser: &mut TokenParser<'a>) -> Result<NoteId, ParseError<'a>> {
-    let hex = parser.pull_token()?;
-    NoteId::from_hex(hex).map_err(|_| ParseError::HexDecodeFailed)
-}
-
-impl TokenSerializable for TimelineRoute {
-    fn serialize_tokens(&self, writer: &mut TokenWriter) {
-        match self {
-            TimelineRoute::Profile(pk) => {
-                writer.write_token("profile");
-                writer.write_token(&pk.hex());
-            }
-            TimelineRoute::Thread(note_id) => {
-                writer.write_token("thread");
-                writer.write_token(&note_id.hex());
-            }
-            TimelineRoute::Reply(note_id) => {
-                writer.write_token("reply");
-                writer.write_token(&note_id.hex());
-            }
-            TimelineRoute::Quote(note_id) => {
-                writer.write_token("quote");
-                writer.write_token(&note_id.hex());
-            }
-            TimelineRoute::Timeline(_tlid) => {
-                todo!("tlid")
-            }
-        }
-    }
-
-    fn parse_from_tokens<'a>(parser: &mut TokenParser<'a>) -> Result<Self, ParseError<'a>> {
+impl TimelineRoute {
+    pub fn parse<'a>(parser: &mut TokenParser<'a>) -> Result<Self, ParseError<'a>> {
         TokenParser::alt(
             parser,
             &[
@@ -81,10 +42,25 @@ impl TokenSerializable for TimelineRoute {
                     p.parse_token("quote")?;
                     Ok(TimelineRoute::Quote(parse_note_id(p)?))
                 },
-                |_p| todo!("handle timeline parsing"),
+                |p| p.parse_all(|p| TimelineKind::parse_from_tokens(p)),
             ],
         )
     }
+
+    pub fn serialize(&self, writer: &mut TokenWriter, columns: &Columns) {
+        match self {
+        }
+    }
+}
+
+fn parse_pubkey<'a>(parser: &mut TokenParser<'a>) -> Result<Pubkey, ParseError<'a>> {
+    let hex = parser.pull_token()?;
+    Pubkey::from_hex(hex).map_err(|_| ParseError::HexDecodeFailed)
+}
+
+fn parse_note_id<'a>(parser: &mut TokenParser<'a>) -> Result<NoteId, ParseError<'a>> {
+    let hex = parser.pull_token()?;
+    NoteId::from_hex(hex).map_err(|_| ParseError::HexDecodeFailed)
 }
 
 #[allow(clippy::too_many_arguments)]
