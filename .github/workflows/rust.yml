@@ -256,3 +256,28 @@ jobs:
           name: DamusNotedeckInstaller-${{ matrix.arch }}.exe
           path: packages\${{ matrix.arch }}\DamusNotedeckInstaller.exe
 
+  upload-artifacts:
+    name: Upload Artifacts to Server
+    runs-on: ubuntu-latest
+    needs: [packaging, macos-dmg, windows-installer]
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/ci'
+
+    steps:
+      - name: Download all Artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Setup SSH and Upload
+        run: |
+          eval "$(ssh-agent -s)"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "${{ secrets.DEPLOY_SFTP_KEY }}" | tr -d '\r' | ssh-add -
+          echo "${{ secrets.DEPLOY_IP }} ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEN65pj1cNMqlf96jZLr1i9+mnHIN4jjRPPTDix6sRnt" >> ~/.ssh/known_hosts
+          scp /home/runner/work/notedeck/notedeck/notedeck-x86_64.rpm \
+            /home/runner/work/notedeck/notedeck/notedeck-x86_64.deb \
+            /home/runner/work/notedeck/notedeck/notedeck-x86_64.dmg \
+            /home/runner/work/notedeck/notedeck/notedeck-aarch64.dmg \
+            /home/runner/work/notedeck/notedeck/DamusNotedeckInstaller-x86_64.exe \
+            /home/runner/work/notedeck/notedeck/DamusNotedeckInstaller-aarch64.exe \
+            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_IP }}:upload/
+
