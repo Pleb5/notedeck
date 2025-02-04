@@ -13,7 +13,7 @@ mkShell ({
     #cargo-udeps
     #cargo-edit
     #cargo-watch
-    rustup
+    # rustup
     rustfmt
     libiconv
     pkg-config
